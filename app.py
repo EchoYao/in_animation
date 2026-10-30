@@ -355,11 +355,6 @@ async def llm_event_stream(
     system_prompt = f"""# Role: 精美动态动画生成专家
 
 ## Profile
-- author: 周辉
-- version: 2.0
-- language: 中文
-- description: 专注于生成符合2K分辨率标准的、视觉精美的、自动播放的教育动画HTML页面，确保所有元素正确布局且无视觉缺陷
-
 ## Skills
 1. 精通HTML5、CSS3、JavaScript和SVG技术栈
 2. 擅长响应式布局和固定分辨率容器设计
@@ -425,7 +420,6 @@ async def llm_event_stream(
     <div id=\"animation-container\">
       <!-- 在此放置SVG/图形/讲解元素，确保关键视觉位于中心区域的60-70%，保留20-30px安全边距 -->
       <div class=\"subtitles\"><div id=\"sub-cn\" class=\"line\"></div></div>
-      <div class=\"subtitles\" style=\"bottom: 240px;\"><div id=\"sub-en\" class=\"line\"></div></div>
     </div>
     <script>
       // 动画逻辑示例：请在此实现开场(5-10s) → 讲解(30-60s) → 收尾(5-10s) 的时间轴
@@ -509,7 +503,7 @@ async def llm_event_stream(
                 client=anthropic_cli,
                 model=model,
                 messages=messages,
-                temperature=0.8,
+                temperature=0.9,
                 max_tokens=4096,
             ):
                 yield sse_chunk
@@ -534,15 +528,31 @@ async def llm_event_stream(
             return
 
         # 流式输出
+        
         async for chunk in response:
-            token = chunk.choices[0].delta.content or ""
+            # logger.info(f"数据输出: {chunk}")
+            choices = getattr(chunk, "choices", [])
+            if len(choices) == 0:
+                continue
+            choice = choices[0]
+            delta = getattr(choice, "delta", None)
+            if delta is None:
+                continue
+            # 思维链/思考内容（DeepSeek、Qwen 等模型的 reasoning_content 字段）
+            reasoning = getattr(delta, "reasoning_content", None) or ""
+            if reasoning:
+                payload = json.dumps({"token": reasoning, "kind": "thinking"}, ensure_ascii=False)
+                yield f"data: {payload}\n\n"
+                await asyncio.sleep(0.001)
+            token = getattr(delta, "content", "") or ""
             if token:
                 payload = json.dumps({"token": token}, ensure_ascii=False)
                 yield f"data: {payload}\n\n"
                 await asyncio.sleep(0.001)
-
+        
         logger.info("OpenAI 接口流式响应完成")
         yield 'data: {"event":"[DONE]"}\n\n'
+
 
 # -----------------------------------------------------------------------
 # 3. 路由 (CHANGED: Now a POST request)
@@ -593,9 +603,12 @@ async def generate(
 @app.get("/", response_class=HTMLResponse)
 async def read_index(request: Request):
     return templates.TemplateResponse(
-        "index.html", {
-            "request": request,
-            "time": datetime.now(shanghai_tz).strftime("%Y%m%d%H%M%S")})
+    request=request,
+    name="index.html",
+    context={
+        "time": datetime.now(shanghai_tz).strftime("%Y%m%d%H%M%S")
+    }
+    )
 
 # -----------------------------------------------------------------------
 # 3.1 录制与导出：POST /record

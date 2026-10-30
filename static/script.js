@@ -7,9 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const translations = {
         heroTitle: { zh: "AI生成教育动画，自动播放，一键导出视频", en: "AI-generated educational animations with one-click video export" },
         startCreatingTitle: { zh: "开始创作", en: "Start Creating" },
-        githubrepo: { zh: "Github 开源仓库", en: "Instructional Animation Github Repo" },
-        officialWebsite: { zh: "通向之路社区", en: " Open Source Community" },
-        groupChat: { zh: "联系我们/加入交流群", en: "Contact Us" },
         placeholders: {
             zh: ["微积分的几何原理", "冒泡排序","热寂", "黑洞是如何形成的"],
             en: ["What is Heat Death?", "How are black holes formed?", "What is Bubble Sort?"]
@@ -22,14 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         sendTitle: { zh: "发送", en: "Send" },
         agentThinking: { zh: "AI 正在进行思考与规划，请稍后。这可能需要数十秒至数分钟...", en: "AI is thinking and planning, please wait..." },
+        agentThinkingLabel: { zh: "思考过程", en: "Thinking" },
+        thinkingCollapse: { zh: "收起思考", en: "Collapse thinking" },
+        thinkingExpand: { zh: "展开思考", en: "Expand thinking" },
         generatingCode: { zh: "生成代码中...", en: "Generating code..." },
         codeComplete: { zh: "代码已完成", en: "Code generated" },
         openInNewWindow: { zh: "在新窗口中打开", en: "Open in new window" },
         saveAsHTML: { zh: "保存为 HTML", en: "Save as HTML" },
         exportAsVideo: { zh: "导出为视频", en: "Export as Video" },
         exportAsGif: { zh: "导出为 GIF", en: "Export as GIF" },
-        featureComingSoon: { zh: "该功能正在开发中，将在不久的将来推出。\n 请关注我们的官方 GitHub 仓库以获取最新动态！", en: "This feature is under development and will be available soon.\n Follow our official GitHub repository for the latest updates!" },
-        visitGitHub: { zh: "访问 GitHub", en: "Visit GitHub" },
         errorMessage: { zh: "抱歉，服务出现了一点问题。请稍后重试。", en: "Sorry, something went wrong. Please try again later." },
         errorFetchFailed: {zh: "LLM服务不可用，请稍后再试", en: "LLM service is unavailable. Please try again later."},
         errorTooManyRequests: {zh: "今天已经使用太多，请明天再试", en: "Too many requests today. Please try again tomorrow."},
@@ -64,13 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const languageSwitcher = document.getElementById('language-switcher');
     const placeholderContainer = document.getElementById('animated-placeholder');
     const topicSuggestionsContainer = document.getElementById('topic-suggestions');
-    const featureModal = document.getElementById('feature-modal');
-    const modalGitHubButton = document.getElementById('modal-github-button');
-    const modalCloseButton = document.getElementById('modal-close-button');
 
     const templates = {
         user: document.getElementById('user-message-template'),
         status: document.getElementById('agent-status-template'),
+        thinking: document.getElementById('agent-thinking-template'),
         code: document.getElementById('agent-code-template'),
         player: document.getElementById('animation-player-template'),
         error: document.getElementById('agent-error-template'),
@@ -122,6 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
         accumulatedCode = '';
         let inCodeBlock = false;
         let codeBlockElement = null;
+        let pendingCodeHeader = false;   // 下一个内容是否属于代码块开头（待去 html 语言标记）
+        let thinkingElement = null;       // 思考显示块
+        let thinkingSeen = false;         // 是否收到过思考内容
 
         try {
             const response = await fetch(`${config.apiBaseUrl}/generate`, {
@@ -188,18 +187,48 @@ document.addEventListener('DOMContentLoaded', () => {
                         throw new LLMParseError(data.error);
                     }
                     const token = data.token || '';
+                    const kind = data.kind || 'content';
+
+                    // —— 思考(推理)内容 ——
+                    if (kind === 'thinking') {
+                        if (!thinkingSeen) {
+                            thinkingSeen = true;
+                            if (agentThinkingMessage) agentThinkingMessage.remove();
+                            thinkingElement = appendThinkingBlock();
+                        }
+                        if (token && thinkingElement) {
+                            updateThinkingContent(thinkingElement, token);
+                        }
+                        continue; // 思考内容不进代码块
+                    }
+
+                    // —— 正式内容 ——
+                    if (agentThinkingMessage) {
+                        agentThinkingMessage.remove();
+                    }
 
                     if (!inCodeBlock && token.includes('```')) {
                         inCodeBlock = true;
-                        if (agentThinkingMessage) agentThinkingMessage.remove();
+                        // 代码弹出时收起思考过程
+                        if (thinkingElement && typeof thinkingElement._thinkingCollapse === 'function') {
+                            thinkingElement._thinkingCollapse();
+                        }
                         codeBlockElement = appendCodeBlock();
-                        const contentAfterMarker = token.substring(token.indexOf('```') + 3).replace(/^html\n/, '');
-                        updateCodeBlock(codeBlockElement, contentAfterMarker);
+                        let remainder = token.substring(token.indexOf('```') + 3);
+                        // 代码块开头的语言标记剥离：同 token 就有内容则立即去掉 html
+                        if (remainder) remainder = remainder.replace(/^html\b\r?\n?/, '');
+                        else pendingCodeHeader = true;   // 本次只有 ```，html 在下一个 token
+                        updateCodeBlock(codeBlockElement, remainder);
                     } else if (inCodeBlock) {
                         if (token.includes('```')) {
                             inCodeBlock = false;
+                            pendingCodeHeader = false;
                             const contentBeforeMarker = token.substring(0, token.indexOf('```'));
                             updateCodeBlock(codeBlockElement, contentBeforeMarker);
+                        } else if (pendingCodeHeader) {
+                            // 代码块开头的第一个内容 token：剥掉拆分开的 html 语言标记
+                            pendingCodeHeader = false;
+                            updateCodeBlock(codeBlockElement, token.replace(/^html\b\r?\n?/, ''));
                         } else {
                             updateCodeBlock(codeBlockElement, token);
                         }
@@ -254,6 +283,100 @@ document.addEventListener('DOMContentLoaded', () => {
     const appendAgentStatus = (text) => appendFromTemplate(templates.status, text);
     const appendErrorMessage = (text) => appendFromTemplate(templates.error, text);
     const appendCodeBlock = () => appendFromTemplate(templates.code);
+
+    function appendThinkingBlock() {
+        const node = templates.thinking.content.cloneNode(true);
+        const el = node.firstElementChild;
+        node.querySelectorAll('[data-translate-key]').forEach(e => {
+            const key = e.dataset.translateKey;
+            const tr = translations[key]?.[currentLang];
+            if (tr) e.textContent = tr;
+        });
+
+        const box = el.querySelector('.thinking-content');
+
+        // 缓冲 + rAF 批量刷新，避免每个 token 反复重建文本节点导致卡顿
+        let buf = '';
+        let rafPending = false;
+        let state = { expanded: false };   // 默认：收起为 3 行预览
+
+        function flush() {
+            rafPending = false;
+            if (!box || !buf) return;
+            box.textContent = buf;
+            if (state.expanded) box.scrollTop = box.scrollHeight;
+        }
+        function push(text) {
+            buf += text;
+            if (!rafPending) {
+                rafPending = true;
+                requestAnimationFrame(flush);
+            }
+        }
+
+        const flip = () => {
+            state.expanded = !state.expanded;
+            el.classList.toggle('expanded', state.expanded);
+            if (toggle) {
+                toggle.title = state.expanded
+                    ? translations.thinkingCollapse[currentLang]
+                    : translations.thinkingExpand[currentLang];
+            }
+        };
+
+        // 完全收起（折叠到仅标题栏），供代码块弹出时调用
+        const collapse = () => {
+            state.expanded = false;
+            el.classList.remove('expanded');
+            el.classList.add('collapsed');
+            if (toggle) {
+                toggle.title = translations.thinkingExpand[currentLang];
+            }
+        };
+
+        const header = el.querySelector('.thinking-header');
+        const toggle = el.querySelector('.thinking-toggle');
+
+        const onToggle = () => {
+            if (el.classList.contains('collapsed')) {
+                el.classList.remove('collapsed');       // 先解除完全收起
+                state.expanded = !state.expanded;       // 再翻转展开状态
+            } else {
+                flip();
+            }
+            if (toggle) {
+                toggle.title = state.expanded
+                    ? translations.thinkingCollapse[currentLang]
+                    : translations.thinkingExpand[currentLang];
+            }
+        };
+        header.addEventListener('click', onToggle);
+        if (toggle) {
+            toggle.addEventListener('click', (ev) => { ev.stopPropagation(); onToggle(); });
+        }
+
+        // 暴露给外部使用的接口
+        el._thinkingState = state;
+        el._thinkingPush = push;
+        el._thinkingCollapse = collapse;
+
+        chatLog.appendChild(el);
+        if (toggle) {
+            toggle.title = translations.thinkingExpand[currentLang];
+        }
+        scrollToBottom();
+        return el;
+    }
+
+    function updateThinkingContent(thinkingElement, text) {
+        if (!thinkingElement) return;
+        if (typeof thinkingElement._thinkingPush === 'function') {
+            thinkingElement._thinkingPush(text);
+        } else {
+            const box = thinkingElement.querySelector('.thinking-content');
+            if (box) box.textContent += text;
+        }
+    }
 
     function updateCodeBlock(codeBlockElement, text) {
         const codeElement = codeBlockElement.querySelector('code');
@@ -675,19 +798,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (target) setLanguage(target.dataset.lang);
         });
 
-        function hideModal() {
-            featureModal.classList.remove('visible');
-        }
-
-        modalCloseButton.addEventListener('click', hideModal);
-        featureModal.addEventListener('click', (e) => {
-            if (e.target === featureModal) hideModal();
-        });
-
-        modalGitHubButton.addEventListener('click', () => {
-            window.open('https://github.com/yourusername/ai-animation', '_blank');
-            hideModal();
-        });
 
         const savedLang = localStorage.getItem('preferredLanguage');
         const browserLang = navigator.language?.toLowerCase() || ''; // e.g. 'zh-cn'
@@ -724,168 +834,3 @@ function hideWarning() {
     document.getElementById('warning-box').style.display = 'none';
     document.getElementById('overlay').style.display = 'none';
 }
-
-// 设置功能
-document.addEventListener('DOMContentLoaded', () => {
-    const settingsButton = document.getElementById('settings-button');
-    const settingsModal = document.getElementById('settings-modal');
-    const settingsModalClose = document.getElementById('settings-modal-close');
-    const settingsForm = document.getElementById('settings-form');
-    const apiKeyInput = document.getElementById('api-key');
-    const baseUrlInput = document.getElementById('base-url');
-    const modelSelect = document.getElementById('model');
-    const testConnectionBtn = document.getElementById('test-connection');
-    const settingsMessage = document.getElementById('settings-message');
-
-    // 打开设置模态框
-    settingsButton.addEventListener('click', async () => {
-        // 加载当前配置
-        try {
-            const response = await fetch('/config');
-            const config = await response.json();
-
-            // 填充表单（不显示实际 API Key）
-            if (config.HAS_API_KEY) {
-                apiKeyInput.value = '****'; // 显示占位符
-            }
-            baseUrlInput.value = config.BASE_URL || '';
-            modelSelect.value = config.MODEL || 'ZhipuAI/GLM-4.6';
-        } catch (error) {
-            console.error('加载配置失败:', error);
-        }
-
-        settingsModal.classList.add('visible');
-    });
-
-    // 关闭设置模态框
-    settingsModalClose.addEventListener('click', () => {
-        settingsModal.classList.remove('visible');
-        // 清除消息
-        settingsMessage.textContent = '';
-        settingsMessage.className = 'settings-message';
-    });
-
-    settingsModal.addEventListener('click', (e) => {
-        if (e.target === settingsModal) {
-            settingsModal.classList.remove('visible');
-            // 清除消息
-            settingsMessage.textContent = '';
-            settingsMessage.className = 'settings-message';
-        }
-    });
-
-    // 测试连接（实际发起 API 请求验证）
-    testConnectionBtn.addEventListener('click', async () => {
-        const apiKey = apiKeyInput.value;
-        const baseUrl = baseUrlInput.value;
-        const model = modelSelect.value;
-
-        if (!apiKey || apiKey === 'sk-REPLACE_ME' || apiKey === '****') {
-            showSettingsMessage('请输入有效的 API Key', 'error');
-            return;
-        }
-
-        if (!model) {
-            showSettingsMessage('请选择模型', 'error');
-            return;
-        }
-
-        testConnectionBtn.disabled = true;
-        testConnectionBtn.textContent = '测试中...';
-
-        try {
-            // 使用专门的测试端点
-            const response = await fetch('/test-config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    api_key: apiKey,
-                    base_url: baseUrl,
-                    model: model
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.ok) {
-                showSettingsMessage(result.message, 'success');
-            } else {
-                showSettingsMessage(result.error || '测试失败', 'error');
-            }
-        } catch (error) {
-            showSettingsMessage('网络错误，请稍后重试', 'error');
-        } finally {
-            testConnectionBtn.disabled = false;
-            testConnectionBtn.textContent = '测试连接';
-        }
-    });
-
-    // 保存设置
-    settingsForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const apiKey = apiKeyInput.value;
-        const baseUrl = baseUrlInput.value;
-        const model = modelSelect.value;
-
-        if (!apiKey || apiKey === 'sk-REPLACE_ME') {
-            showSettingsMessage('API Key 不能为空', 'error');
-            return;
-        }
-
-        const submitBtn = settingsForm.querySelector('button[type="submit"]');
-        submitBtn.disabled = true;
-        submitBtn.textContent = '保存中...';
-
-        try {
-            const response = await fetch('/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ api_key: apiKey, base_url: baseUrl, model: model })
-            });
-
-            const result = await response.json();
-
-            if (result.ok) {
-                showSettingsMessage('设置已保存并生效！', 'success');
-                setTimeout(() => {
-                    settingsModal.classList.remove('visible');
-                    settingsMessage.textContent = '';
-                    settingsMessage.className = 'settings-message';
-                }, 1500);
-            } else {
-                showSettingsMessage(`保存失败: ${result.error || '未知错误'}`, 'error');
-            }
-        } catch (error) {
-            showSettingsMessage('保存设置失败，请检查网络', 'error');
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = '保存设置';
-        }
-    });
-
-    function showSettingsMessage(message, type) {
-        settingsMessage.textContent = message;
-        settingsMessage.className = `settings-message ${type} show`;
-
-        // 自动隐藏消息（3秒后）
-        setTimeout(() => {
-            if (settingsMessage.classList.contains('show')) {
-                settingsMessage.classList.remove('show');
-                // 清除类名，只保留基础的 settings-message
-                setTimeout(() => {
-                    settingsMessage.className = 'settings-message';
-                }, 400); // 等待动画完成
-            }
-        }, 3000);
-
-        // 添加点击关闭功能
-        settingsMessage.onclick = () => {
-            settingsMessage.classList.remove('show');
-            setTimeout(() => {
-                settingsMessage.className = 'settings-message';
-                settingsMessage.onclick = null; // 清除事件
-            }, 400);
-        };
-    }
-});

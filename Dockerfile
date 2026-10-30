@@ -10,15 +10,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖（包含 FFmpeg、中文字体和 Playwright 运行依赖）
+# 安装系统依赖（FFmpeg、中文字体、镜像源工具）
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         fonts-noto-cjk \
-        libgtk-4-1 \
-        libevent-2.1-7 \
-        gstreamer1.0-plugins-base \
-        gstreamer1.0-plugins-good \
-        flite \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
@@ -28,11 +23,10 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# 安装 Playwright 运行依赖并拉取 Chromium 浏览器
-RUN playwright install-deps chromium \
-    && playwright install chromium
+# 安装 Playwright（Chromium 浏览器及其系统运行依赖）
+RUN playwright install --with-deps chromium
 
-# 复制应用代码
+# 复制应用代码（.env / credentials*.json 已被 .dockerignore 排除，不会进镜像）
 COPY . .
 
 # 创建必要的工作目录
