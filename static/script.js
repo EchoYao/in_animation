@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         newChat: { zh: "新对话", en: "New Chat" },
         newChatTitle: { zh: "新对话", en: "New Chat" },
+        history: { zh: "历史对话", en: "History" },
+        historyTitle: { zh: "历史对话", en: "History" },
+        historyEmpty: { zh: "暂无历史对话", en: "No history yet" },
+        historyUntitled: { zh: "未命名对话", en: "Untitled chat" },
+        deleteHistory: { zh: "删除", en: "Delete" },
         chatPlaceholder: {
             zh: "AI 生成结果具有随机性，您可在此输入修改意见",
             en: "Results are random. Enter your modifications here for adjustments."
@@ -20,8 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
         sendTitle: { zh: "发送", en: "Send" },
         agentThinking: { zh: "AI 正在进行思考与规划，请稍后。这可能需要数十秒至数分钟...", en: "AI is thinking and planning, please wait..." },
         agentThinkingLabel: { zh: "思考过程", en: "Thinking" },
-        thinkingCollapse: { zh: "收起思考", en: "Collapse thinking" },
-        thinkingExpand: { zh: "展开思考", en: "Expand thinking" },
         generatingCode: { zh: "生成代码中...", en: "Generating code..." },
         codeComplete: { zh: "代码已完成", en: "Code generated" },
         openInNewWindow: { zh: "在新窗口中打开", en: "Open in new window" },
@@ -83,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let conversationHistory = [];
     let accumulatedCode = '';
     let placeholderInterval;
+    let currentSessionId = null;   // 当前对话对应的历史记录 id
 
     function handleFormSubmit(e) {
         e.preventDefault();
@@ -171,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             console.error('appendAnimationPlayer failed:', err);
                             throw new LLMParseError('Animation rendering failed.');
                         }
+                        persistCurrentSession();   // 保存到历史对话
                         scrollToBottom();
                         return;
                     }
@@ -209,9 +214,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (!inCodeBlock && token.includes('```')) {
                         inCodeBlock = true;
-                        // 代码弹出时收起思考过程
-                        if (thinkingElement && typeof thinkingElement._thinkingCollapse === 'function') {
-                            thinkingElement._thinkingCollapse();
+                        // 代码弹出（思考完成）时移除思考过程块
+                        if (thinkingElement && typeof thinkingElement._thinkingRemove === 'function') {
+                            thinkingElement._thinkingRemove();
                         }
                         codeBlockElement = appendCodeBlock();
                         let remainder = token.substring(token.indexOf('```') + 3);
@@ -298,13 +303,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // 缓冲 + rAF 批量刷新，避免每个 token 反复重建文本节点导致卡顿
         let buf = '';
         let rafPending = false;
-        let state = { expanded: false };   // 默认：收起为 3 行预览
 
         function flush() {
             rafPending = false;
             if (!box || !buf) return;
             box.textContent = buf;
-            if (state.expanded) box.scrollTop = box.scrollHeight;
+            box.scrollTop = box.scrollHeight;
         }
         function push(text) {
             buf += text;
@@ -314,56 +318,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        const flip = () => {
-            state.expanded = !state.expanded;
-            el.classList.toggle('expanded', state.expanded);
-            if (toggle) {
-                toggle.title = state.expanded
-                    ? translations.thinkingCollapse[currentLang]
-                    : translations.thinkingExpand[currentLang];
-            }
+        // 思考完成后从界面移除整个思考块
+        const remove = () => {
+            if (el.parentNode) el.parentNode.removeChild(el);
         };
-
-        // 完全收起（折叠到仅标题栏），供代码块弹出时调用
-        const collapse = () => {
-            state.expanded = false;
-            el.classList.remove('expanded');
-            el.classList.add('collapsed');
-            if (toggle) {
-                toggle.title = translations.thinkingExpand[currentLang];
-            }
-        };
-
-        const header = el.querySelector('.thinking-header');
-        const toggle = el.querySelector('.thinking-toggle');
-
-        const onToggle = () => {
-            if (el.classList.contains('collapsed')) {
-                el.classList.remove('collapsed');       // 先解除完全收起
-                state.expanded = !state.expanded;       // 再翻转展开状态
-            } else {
-                flip();
-            }
-            if (toggle) {
-                toggle.title = state.expanded
-                    ? translations.thinkingCollapse[currentLang]
-                    : translations.thinkingExpand[currentLang];
-            }
-        };
-        header.addEventListener('click', onToggle);
-        if (toggle) {
-            toggle.addEventListener('click', (ev) => { ev.stopPropagation(); onToggle(); });
-        }
 
         // 暴露给外部使用的接口
-        el._thinkingState = state;
         el._thinkingPush = push;
-        el._thinkingCollapse = collapse;
+        el._thinkingRemove = remove;
 
         chatLog.appendChild(el);
-        if (toggle) {
-            toggle.title = translations.thinkingExpand[currentLang];
-        }
         scrollToBottom();
         return el;
     }
@@ -778,6 +742,149 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let placeholderIndex = 0;
 
+    // ===================== 历史对话（localStorage 持久化） =====================
+    const HISTORY_STORAGE_KEY = 'ia_chat_history';
+    const HISTORY_LIMIT = 50;
+
+    function getHistoryList() {
+        try {
+            const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+            const list = raw ? JSON.parse(raw) : [];
+            return Array.isArray(list) ? list : [];
+        } catch (e) {
+            console.warn('读取历史对话失败:', e);
+            return [];
+        }
+    }
+
+    function saveHistoryList(list) {
+        try {
+            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(list.slice(0, HISTORY_LIMIT)));
+        } catch (e) {
+            console.warn('保存历史对话失败:', e);
+        }
+    }
+
+    function ensureSessionId() {
+        if (!currentSessionId) {
+            currentSessionId = 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        }
+        return currentSessionId;
+    }
+
+    function persistCurrentSession() {
+        if (!conversationHistory.length) return;
+        const id = ensureSessionId();
+        const now = Date.now();
+        const list = getHistoryList();
+        let session = list.find(s => s.id === id);
+        if (!session) {
+            session = { id, title: '', createdAt: now, updatedAt: now, messages: [] };
+            list.unshift(session);
+        }
+        session.messages = conversationHistory.map(m => ({ role: m.role, content: m.content }));
+        const firstUser = conversationHistory.find(m => m.role === 'user');
+        session.title = firstUser && firstUser.content
+            ? String(firstUser.content).slice(0, 40)
+            : translations.historyUntitled[currentLang];
+        session.updatedAt = now;
+        // 更新后把当前会话移到最前
+        const idx = list.indexOf(session);
+        if (idx > 0) {
+            list.splice(idx, 1);
+            list.unshift(session);
+        }
+        saveHistoryList(list);
+    }
+
+    function formatHistoryTime(ts) {
+        const d = new Date(ts);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function renderHistoryList() {
+        const listEl = document.getElementById('history-list');
+        if (!listEl) return;
+        const list = getHistoryList();
+        listEl.innerHTML = '';
+        if (!list.length) {
+            const empty = document.createElement('div');
+            empty.className = 'history-empty';
+            empty.textContent = translations.historyEmpty[currentLang];
+            listEl.appendChild(empty);
+            return;
+        }
+        list.forEach(session => {
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.dataset.id = session.id;
+
+            const main = document.createElement('div');
+            main.className = 'history-item-main';
+            const title = document.createElement('div');
+            title.className = 'history-item-title';
+            title.textContent = session.title || translations.historyUntitled[currentLang];
+            const meta = document.createElement('div');
+            meta.className = 'history-item-meta';
+            meta.textContent = formatHistoryTime(session.updatedAt || session.createdAt || Date.now());
+            main.appendChild(title);
+            main.appendChild(meta);
+
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'history-item-delete';
+            del.title = translations.deleteHistory[currentLang];
+            del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+            del.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                deleteSession(session.id);
+            });
+
+            item.appendChild(main);
+            item.appendChild(del);
+            item.addEventListener('click', () => loadSession(session.id));
+            listEl.appendChild(item);
+        });
+    }
+
+    function deleteSession(id) {
+        const list = getHistoryList().filter(s => s.id !== id);
+        saveHistoryList(list);
+        if (currentSessionId === id) currentSessionId = null;
+        renderHistoryList();
+    }
+
+    function openHistory() {
+        renderHistoryList();
+        const modal = document.getElementById('history-modal');
+        if (modal) modal.classList.add('visible');
+    }
+
+    function closeHistory() {
+        const modal = document.getElementById('history-modal');
+        if (modal) modal.classList.remove('visible');
+    }
+
+    function loadSession(id) {
+        const session = getHistoryList().find(s => s.id === id);
+        if (!session) return;
+        currentSessionId = session.id;
+        conversationHistory = (session.messages || []).map(m => ({ role: m.role, content: m.content }));
+        chatLog.innerHTML = '';
+        switchToChatView();
+        conversationHistory.forEach(msg => {
+            if (msg.role === 'user') {
+                appendUserMessage(msg.content);
+            } else if (msg.role === 'assistant' && msg.content) {
+                appendAnimationPlayer(msg.content, session.title || '');
+            }
+        });
+        closeHistory();
+        scrollToBottom();
+    }
+    // ===================== 历史对话结束 =====================
+
     function init() {
         initialInput.addEventListener('input', () => {
             placeholderContainer.classList.toggle('hidden', initialInput.value.length > 0);
@@ -796,6 +903,23 @@ document.addEventListener('DOMContentLoaded', () => {
         languageSwitcher.addEventListener('click', (e) => {
             const target = e.target.closest('button');
             if (target) setLanguage(target.dataset.lang);
+        });
+
+        // 历史对话入口
+        const historyButton = document.getElementById('history-button');
+        const historyButtonInitial = document.getElementById('history-button-initial');
+        const historyModal = document.getElementById('history-modal');
+        const historyClose = document.getElementById('history-close');
+        if (historyButton) historyButton.addEventListener('click', openHistory);
+        if (historyButtonInitial) historyButtonInitial.addEventListener('click', openHistory);
+        if (historyClose) historyClose.addEventListener('click', closeHistory);
+        if (historyModal) {
+            historyModal.addEventListener('click', (e) => {
+                if (e.target === historyModal) closeHistory();
+            });
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeHistory();
         });
 
 

@@ -20,6 +20,9 @@
 
     <div id="initial-view" class="initial-view">
         <img src="/static/logo.svg" alt="Instructional Animation Logo" class="logo" id="logo-initial">
+        <button id="history-button-initial" class="history-icon-button" data-translate-key="historyTitle" title="历史对话">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>
+        </button>
 
         <div class="initial-content">
             <div class="hero-group">
@@ -38,10 +41,16 @@
 
     <div id="chat-view" class="chat-view">
         <header class="chat-header">
-            <button id="new-chat-button" class="new-chat-button" data-translate-key="newChatTitle" title="新对话">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-                <span data-translate-key="newChat">新对话</span>
-            </button>
+            <div class="chat-header-left">
+                <button id="new-chat-button" class="new-chat-button" data-translate-key="newChatTitle" title="新对话">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                    <span data-translate-key="newChat">新对话</span>
+                </button>
+                <button id="history-button" class="new-chat-button history-button" data-translate-key="historyTitle" title="历史对话">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>
+                    <span data-translate-key="history">历史对话</span>
+                </button>
+            </div>
             <img src="/static/logo.svg" alt="Instructional Animation Logo" class="logo" id="logo-chat">
         </header>
         <main id="chat-log" class="chat-log"></main>
@@ -76,9 +85,6 @@
         <div class="message-group agent thinking-block">
             <div class="thinking-header">
                 <span class="thinking-label" data-translate-key="agentThinkingLabel">正在思考</span>
-                <button type="button" class="thinking-toggle" title="收起">
-                    <svg viewBox="0 0 24 24" class="icon-chevron"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
             </div>
             <div class="thinking-content"></div>
         </div>
@@ -134,6 +140,16 @@
         </div>
     </template>
 
+
+    <div id="history-modal" class="history-modal-overlay">
+        <div class="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
+            <div class="history-modal-header">
+                <h2 id="history-modal-title" data-translate-key="history">历史对话</h2>
+                <button id="history-close" class="history-close" title="关闭">×</button>
+            </div>
+            <div id="history-list" class="history-list"></div>
+        </div>
+    </div>
 
     <script src="/static/script.js?v={{ time }}"></script>
 
