@@ -8,6 +8,8 @@ services:
     volumes:
       # 可选：若用文件方式提供配置（与 .env 二选一，环境变量优先）
       - ./credentials.json:/app/credentials.json:ro
+      - ./static:/app/static
+      - ./templates:/app/templates
       # 持久化目录
       - ./.generated_html:/app/.generated_html
       - ./.recordings:/app/.recordings
