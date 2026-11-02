@@ -571,41 +571,6 @@ A:
 
 ---
 
-## 技术交流群
-
-欢迎加入技术交流群，分享你的使用心得和反馈建议：
-
-![技术交流群](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/Screenshot_20261029_102501_com.tencent.mm.jpg)
-
----
-
-## 作者联系
-
-- **微信**: laohaibao2025
-- **邮箱**: 75271002@qq.com
-
-![微信二维码](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Screenshot_20260123_095617_com.tencent.mm.jpg)
-
----
-
-## 打赏
-
-如果这个项目对你有帮助，欢迎请我喝杯咖啡 ☕
-
-**微信支付**
-
-![微信支付](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/image-20250914152855543.png)
-
----
-
-## Star History
-
-如果觉得项目不错，欢迎点个 Star ⭐
-
-[![Star History Chart](https://api.star-history.com/svg?repos=wwwzhouhui/in_animation&type=Date)](https://star-history.com/#wwwzhouhui/in_animation&Date)
-
----
-
 ## License
 
 MIT License

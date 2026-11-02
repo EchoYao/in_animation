@@ -15,10 +15,6 @@ Instructional Animation 是一个基于大语言模型的教学动画生成工�
 
 观看动画生成器的快速演示：
 
-<div align="center">
-<video src="https://github.com/wwwzhouhui/in_animation/raw/main/examples/演示.mp4" controls="controls" width="100%" style="max-width: 800px;">
-  您的浏览器不支持视频播放。
-</video>
 
 **GIF 预览**
 
@@ -597,7 +593,7 @@ playwright install-deps chromium
 
 ### 📝 更新日志
 
-#### v2.1.0 (2025-10-30)
+#### v2.2.0 (2026-11-02)
 
 **新增功能**：
 - ✨ 新增设置模态框，支持通过网页界面配置 API 参数
@@ -630,22 +626,3 @@ playwright install-deps chromium
 - 📹 支持 MP4 视频导出
 - 🌍 双语支持
 
-### 📞 联系我们
-
-  📬 **联系我**：
-
-- 邮箱：[75271002@qq.com](mailto:75271002@qq.com)
-
-🔗 **社交媒体**：
-
-- 个人页：[wwwzhouhui](https://github.com/wwwzhouhui)
-- 公众号：[wwzhouhui](https://mp.weixin.qq.com/cgi-bin/settingpage?t=setting/index&action=index&token=1416320806&lang=zh_CN)
-- Bilibili：[我的B站主页](https://space.bilibili.com/1527002698)
-
-​        微信号：
-
-​        ![image-20250906175827828](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/image-20250906175827828.png)
-
-<div align="center">
-
-**如果这个项目对你有帮助，请给我们一个 ⭐ Star！**
