@@ -2,6 +2,10 @@
 .git
 .gitignore
 
+# 敏感凭据与配置（不被打进镜像）
+.env
+credentials*.json
+
 # Docker
 Dockerfile
 docker-compose.yml
